@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kana Master - Memorize Japanese</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;700&display=swap');
+        
+        :root {
+            --primary: #6366f1;
+            --bg: #f8fafc;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .phone-container {
+            width: 100%;
+            max-width: 430px;
+            background-color: var(--bg);
+            min-height: 100vh;
+            box-shadow: 0 0 50px rgba(0,0,0,0.05);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        #write-canvas {
+            touch-action: none;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: 1.5rem;
+            width: 100%;
+            aspect-ratio: 1/1;
+        }
+
+        .char-card {
+            transition: all 0.1s ease;
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .char-selected {
+            background: var(--primary) !important;
+            color: white !important;
+            border-color: var(--primary) !important;
+            transform: scale(0.92);
+        }
+
+        .tier-beginner { border-left: 4px solid #94a3b8; }
+        .tier-intermediate { border-left: 4px solid #60a5fa; }
+        .tier-advanced { border-left: 4px solid #a855f7; }
+        .tier-elite { border-left: 4px solid #f59e0b; }
+        .tier-mastery { border-left: 4px solid #ef4444; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .btn-active {
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            color: var(--primary);
+        }
+
+        .quick-btn {
+            transition: all 0.2s;
+            border: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+        .quick-btn.active {
+            background: #1e293b;
+            color: white;
+            border-color: #1e293b;
+        }
+
+        .star-active { color: #f59e0b !important; fill: #f59e0b; }
+
+        @keyframes timer-shrink {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+        .timer-active {
+            animation-name: timer-shrink;
+            animation-timing-function: linear;
+            animation-fill-mode: forwards;
+        }
+
+        .badge-locked {
+            opacity: 0.5;
+            filter: grayscale(1);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-xs font-bold z-[100] opacity-0 transition-opacity pointer-events-none"></div>
+
+    <div class="phone-container">
+        <!-- Header -->
+        <nav class="glass sticky top-0 z-50 px-5 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">か</div>
+                <h1 class="text-lg font-bold">Kana Master</h1>
+            </div>
+            <div id="streak-display" class="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-100">🔥 0</div>
+        </nav>
+
+        <!-- Quiz Progress Bars -->
+        <div id="quiz-progress-wrap" class="hidden w-full sticky top-[65px] z-50">
+            <div class="h-1 bg-slate-100 w-full">
+                <div id="quiz-progress-bar" class="h-full bg-indigo-500 transition-all duration-500 w-0"></div>
+            </div>
+            <div id="flash-timer-wrap" class="hidden h-1 bg-amber-100 w-full overflow-hidden">
+                <div id="flash-timer-bar" class="h-full bg-amber-500 w-full"></div>
+            </div>
+        </div>
+
+        <main id="app-container" class="flex-grow p-5 overflow-y-auto no-scrollbar pb-24">
+            
+            <!-- VIEW: STUDY -->
+            <div id="view-study" class="space-y-6">
+                <div class="flex bg-slate-100 p-1 rounded-xl">
+                    <button id="btn-hira" onclick="setSystem('hira')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all btn-active">Hiragana</button>
+                    <button id="btn-kata" onclick="setSystem('kata')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all text-slate-500">Katakana</button>
+                </div>
+
+                <div id="starred-filter-wrap" class="hidden">
+                    <button onclick="toggleStarredOnly()" id="btn-starred-only" class="w-full flex items-center justify-between p-4 bg-orange-50 border border-orange-100 rounded-2xl transition-all">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">⭐</span>
+                            <div class="text-left">
+                                <div class="text-sm font-bold text-orange-900">Study Starred Only</div>
+                                <div id="starred-count" class="text-[10px] font-bold text-orange-600 uppercase">0 Characters</div>
+                            </div>
+                        </div>
+                        <div id="starred-toggle-switch" class="w-10 h-5 bg-slate-200 rounded-full relative transition-colors">
+                            <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform"></div>
+                        </div>
+                    </button>
+                </div>
+
+                <div id="selection-area" class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Rows</h2>
+                        <div class="flex items-center gap-4">
+                            <div class="relative">
+                                <button onclick="toggleFlashDropdown()" class="flex items-center gap-1 text-[10px] font-bold text-amber-600 uppercase">
+                                    <span id="flash-active-dot" class="w-1.5 h-1.5 bg-amber-500 rounded-full hidden"></span>
+                                    ⚡ Flash Study
+                                </button>
+                                <div id="flash-dropdown" class="hidden absolute right-0 top-6 w-32 bg-white border border-slate-100 shadow-xl rounded-xl p-2 z-[60]">
+                                    <div class="text-[8px] font-black text-slate-400 uppercase mb-2 px-2">Timer Limit</div>
+                                    <button onclick="setFlashMode(true, 3)" class="w-full text-left px-2 py-1.5 text-xs rounded-lg hover:bg-slate-50 font-medium">3 Seconds</button>
+                                    <button onclick="setFlashMode(true, 5)" class="w-full text-left px-2 py-1.5 text-xs rounded-lg hover:bg-slate-50 font-medium">5 Seconds</button>
+                                    <button onclick="setFlashMode(true, 10)" class="w-full text-left px-2 py-1.5 text-xs rounded-lg hover:bg-slate-50 font-medium">10 Seconds</button>
+                                    <hr class="my-1 border-slate-100">
+                                    <button onclick="setFlashMode(false)" class="w-full text-left px-2 py-1.5 text-xs rounded-lg text-rose-500 font-bold">Disable</button>
+                                </div>
+                            </div>
+                            <button onclick="selectAll(true)" class="text-[10px] font-bold text-indigo-600 uppercase">Select All</button>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1" id="row-select-container"></div>
+                </div>
+
+                <div id="organized-rows" class="space-y-2 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"></div>
+
+                <div class="grid grid-cols-1 gap-3">
+                    <button onclick="startQuiz('choice')" class="w-full flex items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm active:scale-95 transition-all">
+                        <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mr-4 font-bold">A</div>
+                        <div class="text-left font-bold text-sm">Multiple Choice</div>
+                    </button>
+                    <button onclick="startQuiz('type')" class="w-full flex items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm active:scale-95 transition-all">
+                        <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mr-4 font-bold">⌨️</div>
+                        <div class="text-left font-bold text-sm">Typing Test</div>
+                    </button>
+                    <button onclick="startQuiz('write')" class="w-full flex items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm active:scale-95 transition-all">
+                        <div class="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mr-4 font-bold">✏️</div>
+                        <div class="text-left font-bold text-sm">Writing Practice</div>
+                    </button>
+                    <button onclick="startQuiz('flashcard')" class="w-full flex items-center p-4 bg-slate-900 rounded-2xl border border-slate-800 shadow-sm active:scale-95 transition-all text-white">
+                        <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-white mr-4 font-bold">🎴</div>
+                        <div class="text-left font-bold text-sm">Flashcards (Random Reveal)</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW: MASTERY -->
+            <div id="view-mastery" class="hidden space-y-6">
+                <div class="bg-indigo-600 p-6 rounded-3xl text-white">
+                    <h2 class="text-xl font-bold mb-1">Row Mastery Challenge</h2>
+                    <p class="text-indigo-100 text-xs">Master a row to earn a unique badge. Requirements: Randomized Writing phase, then Randomized Typing phase.</p>
+                </div>
+
+                <div class="flex bg-slate-100 p-1 rounded-xl">
+                    <button id="m-btn-hira" onclick="setMasterySystem('hira')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all btn-active">Hiragana</button>
+                    <button id="m-btn-kata" onclick="setMasterySystem('kata')" class="flex-1 py-2 rounded-lg font-bold text-sm transition-all text-slate-500">Katakana</button>
+                </div>
+
+                <div id="mastery-row-list" class="space-y-3">
+                    <!-- Rows injected here -->
+                </div>
+            </div>
+
+            <!-- VIEW: QUIZ -->
+            <div id="view-quiz" class="hidden space-y-8 py-6">
+                <div class="text-center relative">
+                    <div id="q-prompt" class="text-9xl font-bold text-slate-800 mb-2">あ</div>
+                    <div id="q-sub" class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Identify</div>
+                </div>
+
+                <div id="ui-choice" class="grid grid-cols-2 gap-3 hidden"></div>
+
+                <div id="ui-type" class="hidden space-y-4">
+                    <input type="text" id="type-input" placeholder="Type romaji..." class="w-full text-center text-3xl font-bold p-6 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none">
+                    <button onclick="submitType()" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold">Check</button>
+                </div>
+
+                <div id="ui-write" class="hidden space-y-4">
+                    <canvas id="write-canvas"></canvas>
+                    <div class="flex gap-3">
+                        <button onclick="clearCanvas()" class="flex-1 py-4 bg-slate-100 rounded-2xl font-bold text-slate-500">Clear</button>
+                        <button onclick="showWriteVerification()" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg">Done</button>
+                    </div>
+                </div>
+
+                <div id="ui-flashcard" class="hidden space-y-6">
+                    <div class="bg-white border border-slate-100 shadow-sm p-12 rounded-3xl text-center relative overflow-hidden">
+                        <button onclick="toggleStarCurrent()" id="card-star-btn" class="absolute top-4 left-4 text-2xl text-slate-200 transition-colors">⭐</button>
+                        <div class="text-xs font-black text-slate-300 uppercase tracking-[0.2em] mb-2">Recall This Sound</div>
+                        <div id="flash-romaji" class="text-6xl font-black text-indigo-600">a</div>
+                    </div>
+                    <button onclick="showFlashReveal()" class="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold shadow-lg">Reveal Answer</button>
+                </div>
+
+                <div id="ui-write-verify" class="hidden space-y-8">
+                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xl space-y-6">
+                        <div class="flex justify-around items-center">
+                            <canvas id="preview-canvas-copy" class="w-24 h-24 border rounded-xl bg-slate-50"></canvas>
+                            <div class="text-3xl text-slate-200">→</div>
+                            <div id="write-answer-char" class="w-24 h-24 flex items-center justify-center text-6xl text-indigo-600 font-bold bg-indigo-50 rounded-xl">あ</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="submitManualResult(false)" class="p-5 bg-rose-50 text-rose-600 rounded-2xl font-bold border border-rose-100">Mistake</button>
+                            <button onclick="submitManualResult(true)" class="p-5 bg-emerald-50 text-emerald-600 rounded-2xl font-bold border border-emerald-100">Correct</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ui-feedback" class="hidden space-y-6">
+                    <div id="feedback-msg" class="text-center py-6 rounded-2xl font-bold text-xl"></div>
+                    <div id="reveal-container" class="hidden">
+                        <div class="text-center bg-indigo-50 p-4 rounded-xl relative">
+                            <div class="text-[10px] font-bold text-indigo-400 uppercase mb-1">Answer</div>
+                            <div id="answer-val" class="text-5xl font-black text-indigo-600">あ</div>
+                        </div>
+                    </div>
+                    <button id="btn-continue" onclick="nextQuestion()" class="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold text-lg">Continue</button>
+                </div>
+            </div>
+
+            <!-- VIEW: RESULTS -->
+            <div id="view-results" class="hidden text-center space-y-8 py-10">
+                <h2 class="text-5xl font-black text-slate-800" id="res-score">0%</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-100"><div class="text-[10px] font-bold text-emerald-500">COMPLETED</div><div id="res-correct" class="text-2xl font-bold">0</div></div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-100"><div class="text-[10px] font-bold text-rose-500">MISTAKES</div><div id="res-wrong" class="text-2xl font-bold">0</div></div>
+                </div>
+                <div class="space-y-3">
+                    <button id="btn-retry-wrong" onclick="retryMistakes()" class="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold hidden">Retry Mistakes</button>
+                    <button onclick="retryAll()" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold">Retry Full Set</button>
+                    <button onclick="changeView('study')" class="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold">Back Home</button>
+                </div>
+            </div>
+
+            <!-- VIEW: BADGES -->
+            <div id="view-badges" class="hidden space-y-6">
+                <div class="flex bg-slate-100 p-1 rounded-xl">
+                    <button id="badge-tab-all" onclick="setBadgeTab('all')" class="flex-1 py-2 rounded-lg font-bold text-xs transition-all btn-active">All</button>
+                    <button id="badge-tab-achieved" onclick="setBadgeTab('achieved')" class="flex-1 py-2 rounded-lg font-bold text-xs transition-all text-slate-500">Achieved</button>
+                    <button id="badge-tab-locked" onclick="setBadgeTab('locked')" class="flex-1 py-2 rounded-lg font-bold text-xs transition-all text-slate-500">Locked</button>
+                </div>
+                <div id="badge-list" class="space-y-3 pb-24"></div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Nav -->
+        <div class="glass fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto grid grid-cols-3 p-2 gap-2 z-50">
+            <button onclick="changeView('study')" id="nav-study" class="flex flex-col items-center py-3 rounded-xl">
+                <span class="text-xs font-bold">Study</span>
+            </button>
+            <button onclick="changeView('mastery')" id="nav-mastery" class="flex flex-col items-center py-3 rounded-xl">
+                <span class="text-xs font-bold">Mastery</span>
+            </button>
+            <button onclick="changeView('badges')" id="nav-badges" class="flex flex-col items-center py-3 rounded-xl">
+                <span class="text-xs font-bold">Progress</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const KANA_DATA = {
+            'A': { hira: [['あ','a'],['い','i'],['う','u'],['え','e'],['お','o']], kata: [['ア','a'],['イ','i'],['ウ','u'],['エ','e'],['オ','o']] },
+            'K': { hira: [['か','ka'],['き','ki'],['く','ku'],['け','ke'],['こ','ko']], kata: [['カ','ka'],['キ','ki'],['ク','ku'],['ケ','ke'],['コ','ko']] },
+            'S': { hira: [['さ','sa'],['し','shi'],['す','su'],['せ','se'],['そ','so']], kata: [['サ','sa'],['シ','shi'],['ス','su'],['セ','se'],['ソ','so']] },
+            'T': { hira: [['た','ta'],['ち','chi'],['つ','tsu'],['て','te'],['と','to']], kata: [['タ','ta'],['チ','chi'],['ツ','tsu'],['テ','te'],['ト','to']] },
+            'N': { hira: [['な','na'],['に','ni'],['ぬ','nu'],['ね','ne'],['の','no']], kata: [['ナ','na'],['ニ','ni'],['ヌ','nu'],['ネ','ne'],['ノ','no']] },
+            'H': { hira: [['は','ha'],['ひ','hi'],['ふ','fu'],['へ','he'],['ほ','ho']], kata: [['ハ','ha'],['ヒ','hi'],['フ','fu'],['ヘ','he'],['ホ','ho']] },
+            'M': { hira: [['ま','ma'],['み','mi'],['む','mu'],['め','me'],['も','mo']], kata: [['マ','ma'],['ミ','mi'],['ム','mu'],['め','me'],['モ','mo']] },
+            'Y': { hira: [['や','ya'], null, ['ゆ','yu'], null, ['よ','yo']], kata: [['ヤ','ya'], null, ['ユ','yu'], null, ['ヨ','yo']] },
+            'R': { hira: [['ら','ra'],['り','ri'],['る','ru'],['れ','re'],['ろ','ro']], kata: [['ラ','ra'],['リ','ri'],['ル','ru'],['レ','re'],['ロ','ro']] },
+            'W': { hira: [['わ','wa'], null, null, null, ['を','wo']], kata: [['ワ','wa'], null, null, null, ['ヲ','wo']] },
+            'n': { hira: [['ん','n'], null, null, null, null], kata: [['ン','n'], null, null, null, null] }
+        };
+
+        const BADGE_DEFS = [
+            { id: 'st_1', tier: 'beginner', cat: 'streak', name: 'Starting Line', desc: 'Reach a 10 answer streak', target: 10 },
+            { id: 'st_2', tier: 'beginner', cat: 'streak', name: 'Momentum', desc: 'Reach a 25 answer streak', target: 25 },
+            { id: 'st_3', tier: 'intermediate', cat: 'streak', name: 'Steady Hands', desc: 'Reach a 50 answer streak', target: 50 },
+            { id: 'st_5', tier: 'advanced', cat: 'streak', name: 'Flow State', desc: 'Reach a 100 answer streak', target: 100 },
+            { id: 'ac_1', tier: 'beginner', cat: 'accuracy', name: 'Novice', desc: 'Answer 25 questions correctly', target: 25 },
+            { id: 'ac_3', tier: 'intermediate', cat: 'accuracy', name: 'Scholar', desc: 'Answer 100 questions correctly', target: 100 },
+            { id: 'ac_6', tier: 'advanced', cat: 'accuracy', name: 'Master', desc: 'Answer 500 questions correctly', target: 500 },
+            { id: 'wr_1', tier: 'beginner', cat: 'writing', name: 'Inker', desc: 'Write 25 characters correctly', target: 25 },
+            { id: 'wr_3', tier: 'advanced', cat: 'writing', name: 'Brush Master', desc: 'Write 100 characters correctly', target: 100 },
+            { id: 'fs_1', tier: 'beginner', cat: 'flash', name: 'Quick Spark', desc: 'Complete 10 flash study reveals', target: 10 },
+            { id: 'fs_4', tier: 'elite', cat: 'flash', name: 'Instant Recall', desc: 'Complete 100 flash study reveals', target: 100 }
+        ];
+
+        Object.keys(KANA_DATA).forEach(row => {
+            BADGE_DEFS.push({ id: `m_h_${row}`, tier: 'mastery', cat: 'mastery', name: `Hira ${row}-Row Master`, desc: `Completed Mastery Challenge for Hiragana ${row} row`, target: 1 });
+            BADGE_DEFS.push({ id: `m_k_${row}`, tier: 'mastery', cat: 'mastery', name: `Kata ${row}-Row Master`, desc: `Completed Mastery Challenge for Katakana ${row} row`, target: 1 });
+        });
+
+        let stats = JSON.parse(localStorage.getItem('kana_master_v9')) || {
+            totalHira: 0, totalKata: 0, currentStreak: 0, maxStreak: 0, totalWritten: 0, totalFlashStudy: 0,
+            unlockedBadges: [], rowMastery: {}, starred: [] 
+        };
+
+        let currentSystem = 'hira';
+        let masterySystem = 'hira';
+        let selectedIndices = new Set();
+        let lastQuizItems = [];
+        let quizState = { type: null, items: [], index: 0, correct: [], wrong: [], isMastery: false, activeMasteryRow: null };
+        let currentView = 'study';
+        let currentBadgeTab = 'all';
+        let isStarredOnly = false;
+        let flashStudy = { active: false, time: 5, timerId: null };
+        let autoNextTimeout = null;
+        let canvas, ctx, isDrawing = false;
+
+        window.onload = () => {
+            renderGrid();
+            renderRowSelect();
+            initCanvas();
+            updateNavUI();
+            updateStreakHeader();
+            updateStarredMenu();
+            initKeyboardListeners();
+        };
+
+        function initKeyboardListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    if (currentView === 'results') { retryAll(); return; }
+                    if (currentView !== 'quiz') return;
+                    if (!document.getElementById('ui-feedback').classList.contains('hidden')) { nextQuestion(); return; }
+                    if (quizState.type === 'type') { submitType(); } 
+                    else if (quizState.type === 'write') {
+                        if (!document.getElementById('ui-write').classList.contains('hidden')) showWriteVerification();
+                        else if (!document.getElementById('ui-write-verify').classList.contains('hidden')) submitManualResult(true);
+                    } else if (quizState.type === 'flashcard') {
+                        if (!document.getElementById('ui-flashcard').classList.contains('hidden')) showFlashReveal();
+                    }
+                }
+            });
+        }
+
+        function setSystem(sys) {
+            currentSystem = sys;
+            document.getElementById('btn-hira').classList.toggle('btn-active', sys === 'hira');
+            document.getElementById('btn-kata').classList.toggle('btn-active', sys === 'kata');
+            renderGrid(); renderRowSelect();
+        }
+
+        function setMasterySystem(sys) {
+            masterySystem = sys;
+            document.getElementById('m-btn-hira').classList.toggle('btn-active', sys === 'hira');
+            document.getElementById('m-btn-kata').classList.toggle('btn-active', sys === 'kata');
+            renderMasteryList();
+        }
+
+        function toggleFlashDropdown() { document.getElementById('flash-dropdown').classList.toggle('hidden'); }
+
+        function setFlashMode(active, time) {
+            flashStudy.active = active;
+            if (time) flashStudy.time = time;
+            document.getElementById('flash-active-dot').classList.toggle('hidden', !active);
+            document.getElementById('flash-dropdown').classList.add('hidden');
+            showToast(active ? `Flash Study: ${time}s` : "Flash Study Disabled");
+        }
+
+        function updateStarredMenu() {
+            const wrap = document.getElementById('starred-filter-wrap');
+            const selectionArea = document.getElementById('selection-area');
+            const gridArea = document.getElementById('organized-rows');
+            const countEl = document.getElementById('starred-count');
+            if (stats.starred.length > 0) {
+                wrap.classList.remove('hidden');
+                countEl.textContent = `${stats.starred.length} Characters`;
+                if (isStarredOnly) {
+                    selectionArea.classList.add('hidden'); gridArea.classList.add('hidden');
+                    document.getElementById('starred-toggle-switch').classList.add('bg-orange-500');
+                    document.getElementById('starred-toggle-switch').children[0].classList.add('translate-x-5');
+                } else {
+                    selectionArea.classList.remove('hidden'); gridArea.classList.remove('hidden');
+                    document.getElementById('starred-toggle-switch').classList.remove('bg-orange-500');
+                    document.getElementById('starred-toggle-switch').children[0].classList.remove('translate-x-5');
+                }
+            } else { wrap.classList.add('hidden'); isStarredOnly = false; selectionArea.classList.remove('hidden'); gridArea.classList.remove('hidden'); }
+        }
+
+        function toggleStarredOnly() { isStarredOnly = !isStarredOnly; updateStarredMenu(); }
+
+        function renderRowSelect() {
+            const container = document.getElementById('row-select-container'); container.innerHTML = '';
+            Object.keys(KANA_DATA).forEach(row => {
+                const btn = document.createElement('button');
+                btn.className = "quick-btn px-4 py-2 bg-white rounded-full text-[10px] font-bold shadow-sm";
+                btn.textContent = `${row}-Row`; btn.id = `qsel-${row}`; btn.onclick = () => toggleRowSelection(row);
+                container.appendChild(btn);
+            });
+            updateRowSelectUI();
+        }
+
+        function toggleRowSelection(row) {
+            const rowItems = KANA_DATA[row][currentSystem];
+            let allInRowSelected = true;
+            rowItems.forEach((item, i) => { if (item && !selectedIndices.has(`${currentSystem}-${row}-${i}`)) allInRowSelected = false; });
+            rowItems.forEach((item, i) => { if (!item) return; const key = `${currentSystem}-${row}-${i}`; if (allInRowSelected) selectedIndices.delete(key); else selectedIndices.add(key); });
+            renderGrid(); updateRowSelectUI();
+        }
+
+        function updateRowSelectUI() {
+            Object.keys(KANA_DATA).forEach(row => {
+                const btn = document.getElementById(`qsel-${row}`); if (!btn) return;
+                const items = KANA_DATA[row][currentSystem];
+                let count = 0, total = 0;
+                items.forEach((it, i) => { if(it){ total++; if(selectedIndices.has(`${currentSystem}-${row}-${i}`)) count++; } });
+                btn.classList.toggle('active', count > 0 && count === total);
+            });
+        }
+
+        function selectAll(val) {
+            Object.keys(KANA_DATA).forEach(row => {
+                KANA_DATA[row][currentSystem].forEach((it, i) => { if(it){ const key = `${currentSystem}-${row}-${i}`; if(val) selectedIndices.add(key); else selectedIndices.delete(key); } });
+            });
+            renderGrid(); updateRowSelectUI();
+        }
+
+        function renderGrid() {
+            const container = document.getElementById('organized-rows'); container.innerHTML = '';
+            Object.keys(KANA_DATA).forEach(rowKey => {
+                const rowDiv = document.createElement('div'); rowDiv.className = "grid grid-cols-6 gap-1.5 items-center";
+                const label = document.createElement('div'); label.className = "text-[10px] font-black text-slate-300 text-center uppercase"; label.textContent = rowKey;
+                rowDiv.appendChild(label);
+                KANA_DATA[rowKey][currentSystem].forEach((item, i) => {
+                    if (!item) { rowDiv.appendChild(document.createElement('div')); return; }
+                    const key = `${currentSystem}-${rowKey}-${i}`;
+                    const card = document.createElement('div');
+                    card.className = `char-card ${selectedIndices.has(key) ? 'char-selected' : ''}`;
+                    card.innerHTML = `<span class="font-bold text-sm">${item[0]}</span>`;
+                    card.onclick = () => { if (selectedIndices.has(key)) selectedIndices.delete(key); else selectedIndices.add(key); card.classList.toggle('char-selected'); updateRowSelectUI(); };
+                    rowDiv.appendChild(card);
+                });
+                container.appendChild(rowDiv);
+            });
+        }
+
+        function renderMasteryList() {
+            const container = document.getElementById('mastery-row-list'); container.innerHTML = '';
+            Object.keys(KANA_DATA).forEach(row => {
+                const isMastered = stats.unlockedBadges.includes(`m_${masterySystem === 'hira' ? 'h' : 'k'}_${row}`);
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm ${isMastered ? 'border-indigo-100 bg-indigo-50/30' : ''}`;
+                div.innerHTML = `
+                    <div>
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${row} Row</div>
+                        <div class="text-sm font-bold">${isMastered ? '✨ Mastered' : 'Not Mastered'}</div>
+                    </div>
+                    <button onclick="startMasteryChallenge('${row}')" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-sm">Master</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function startMasteryChallenge(rowKey) {
+            const pool = [];
+            KANA_DATA[rowKey][masterySystem].forEach(it => {
+                if(it) pool.push({ char: it[0], romaji: it[1], row: rowKey, sys: masterySystem });
+            });
+            
+            // Build Mastery Queue: First writing for all chars (randomized), then typing for all chars (randomized differently)
+            const writingPhase = pool.map(item => ({ ...item, task: 'write' })).sort(() => Math.random() - 0.5);
+            const typingPhase = pool.map(item => ({ ...item, task: 'type' })).sort(() => Math.random() - 0.5);
+            
+            const fullMasteryQueue = [...writingPhase, ...typingPhase];
+            
+            lastQuizItems = JSON.parse(JSON.stringify(pool));
+            quizState = { 
+                type: 'write', 
+                items: fullMasteryQueue, 
+                index: 0, 
+                correct: [], 
+                wrong: [], 
+                isMastery: true, 
+                activeMasteryRow: rowKey
+            };
+            changeView('quiz'); document.getElementById('quiz-progress-wrap').classList.remove('hidden'); showQuestion();
+        }
+
+        function startQuiz(type, poolOverride = null) {
+            let pool = poolOverride || [];
+            if (!poolOverride) {
+                if (isStarredOnly) pool = [...stats.starred];
+                else {
+                    selectedIndices.forEach(key => {
+                        const [sys, row, idx] = key.split('-');
+                        const data = KANA_DATA[row][sys][idx];
+                        pool.push({ char: data[0], romaji: data[1], row, sys });
+                    });
+                }
+            }
+            if (pool.length === 0) { showToast(isStarredOnly ? "No starred characters yet!" : "Select characters first!"); return; }
+            lastQuizItems = JSON.parse(JSON.stringify(pool));
+            quizState = { type, items: pool.sort(() => Math.random() - 0.5), index: 0, correct: [], wrong: [], isMastery: false };
+            changeView('quiz'); document.getElementById('quiz-progress-wrap').classList.remove('hidden'); showQuestion();
+        }
+
+        function stopFlashTimer() {
+            if (flashStudy.timerId) clearTimeout(flashStudy.timerId);
+            document.getElementById('flash-timer-wrap').classList.add('hidden');
+            const bar = document.getElementById('flash-timer-bar');
+            bar.classList.remove('timer-active'); bar.style.animationDuration = '0s';
+        }
+
+        function startFlashTimer() {
+            stopFlashTimer();
+            let limit = flashStudy.time;
+            let active = flashStudy.active;
+
+            if (quizState.isMastery) {
+                active = true;
+                limit = quizState.items[quizState.index].task === 'write' ? 10 : 5;
+            } else if (quizState.type === 'flashcard') {
+                active = false;
+            }
+
+            if (!active) return;
+            
+            const barWrap = document.getElementById('flash-timer-wrap');
+            const bar = document.getElementById('flash-timer-bar');
+            barWrap.classList.remove('hidden'); bar.classList.add('timer-active'); bar.style.animationDuration = `${limit}s`;
+            flashStudy.timerId = setTimeout(() => validateAnswer(false), limit * 1000);
+        }
+
+        function showQuestion() {
+            const current = quizState.items[quizState.index];
+            document.getElementById('quiz-progress-bar').style.width = `${(quizState.index / quizState.items.length) * 100}%`;
+            document.querySelectorAll('#view-quiz [id^="ui-"]').forEach(el => el.classList.add('hidden'));
+            
+            if (quizState.isMastery) {
+                quizState.type = current.task;
+            }
+
+            const activeUi = document.getElementById(`ui-${quizState.type}`);
+            if(activeUi) activeUi.classList.remove('hidden');
+
+            if (quizState.type === 'write') {
+                document.getElementById('q-prompt').textContent = current.romaji; 
+                document.getElementById('q-sub').textContent = quizState.isMastery ? `MASTERY DRAW: ${current.romaji.toUpperCase()}` : 'DRAW CHARACTER';
+                setTimeout(resizeCanvas, 50); clearCanvas();
+            } else if (quizState.type === 'flashcard') {
+                document.getElementById('q-prompt').textContent = '?'; document.getElementById('q-sub').textContent = 'RECALL CHARACTER';
+                document.getElementById('flash-romaji').textContent = current.romaji; updateStarIcon();
+            } else {
+                document.getElementById('q-prompt').textContent = current.char;
+                document.getElementById('q-sub').textContent = quizState.isMastery ? `MASTERY TYPE: ${current.char}` : (quizState.type === 'type' ? 'TYPE ROMAJI' : 'CHOOSE SOUND');
+                if (quizState.type === 'type') { const ti = document.getElementById('type-input'); ti.value = ''; setTimeout(() => ti.focus(), 150); }
+            }
+            if (quizState.type === 'choice') {
+                const container = document.getElementById('ui-choice'); container.innerHTML = '';
+                let choices = [current.romaji];
+                let all = []; Object.values(KANA_DATA).forEach(r => r[current.sys].forEach(i => i && all.push(i[1])));
+                while (choices.length < 4) { let r = all[Math.floor(Math.random() * all.length)]; if (!choices.includes(r)) choices.push(r); }
+                choices.sort(() => Math.random() - 0.5).forEach(c => {
+                    const b = document.createElement('button');
+                    b.className = "py-6 bg-white border border-slate-200 rounded-2xl font-bold text-xl shadow-sm active:scale-95 transition-all";
+                    b.textContent = c; b.onclick = () => validateAnswer(c === current.romaji); container.appendChild(b);
+                });
+            }
+            startFlashTimer();
+        }
+
+        function checkBadgeUnlocks() {
+            BADGE_DEFS.forEach(b => {
+                if (stats.unlockedBadges.includes(b.id)) return;
+                let val = 0;
+                if (b.cat === 'streak') val = stats.maxStreak;
+                else if (b.cat === 'accuracy') val = stats.totalHira + stats.totalKata;
+                else if (b.cat === 'writing') val = stats.totalWritten;
+                else if (b.cat === 'flash') val = stats.totalFlashStudy;
+                if (val >= b.target && b.cat !== 'mastery') { stats.unlockedBadges.push(b.id); showToast(`🏆 Badge Unlocked: ${b.name}`); }
+            });
+        }
+
+        function validateAnswer(isCorrect) {
+            const current = quizState.items[quizState.index];
+            const wasFlashStudy = (flashStudy.active || quizState.isMastery) && quizState.type !== 'flashcard';
+            stopFlashTimer();
+            document.querySelectorAll('#view-quiz [id^="ui-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById('ui-feedback').classList.remove('hidden');
+            const msg = document.getElementById('feedback-msg');
+            
+            if (isCorrect) {
+                quizState.correct.push(current);
+                msg.textContent = (quizState.isMastery && current.task === 'write') ? "✨ Shape OK! Continuing..." : "✨ Correct!";
+
+                if (current.sys === 'hira') stats.totalHira++; else stats.totalKata++;
+                if (quizState.type === 'write') stats.totalWritten++;
+                if (wasFlashStudy) stats.totalFlashStudy++;
+                stats.currentStreak++; if (stats.currentStreak > stats.maxStreak) stats.maxStreak = stats.currentStreak;
+                
+                msg.className = "text-center py-6 rounded-2xl font-bold text-xl bg-emerald-50 text-emerald-600 border border-emerald-100";
+                document.getElementById('reveal-container').classList.add('hidden');
+                autoNextTimeout = setTimeout(() => nextQuestion(), 800);
+            } else {
+                quizState.wrong.push(current); stats.currentStreak = 0;
+                msg.textContent = quizState.isMastery ? "❌ Mastery Failed" : "❌ Not Quite"; 
+                msg.className = "text-center py-6 rounded-2xl font-bold text-xl bg-rose-50 text-rose-600 border border-rose-100";
+                document.getElementById('reveal-container').classList.remove('hidden');
+                document.getElementById('answer-val').textContent = current.task === 'write' ? current.char : current.romaji;
+            }
+            checkBadgeUnlocks(); updateStreakHeader(); saveStats();
+        }
+
+        function toggleStarCurrent() {
+            const current = quizState.items[quizState.index];
+            const idx = stats.starred.findIndex(s => s.char === current.char && s.sys === current.sys);
+            if (idx > -1) { stats.starred.splice(idx, 1); showToast("Unstarred"); } 
+            else { stats.starred.push({...current}); showToast("Starred!"); }
+            updateStarIcon(); saveStats(); updateStarredMenu();
+        }
+
+        function updateStarIcon() {
+            const current = quizState.items[quizState.index];
+            const isStarred = stats.starred.some(s => s.char === current.char && s.sys === current.sys);
+            document.getElementById('card-star-btn').classList.toggle('star-active', isStarred);
+        }
+
+        function showFlashReveal() {
+            const current = quizState.items[quizState.index];
+            document.querySelectorAll('#view-quiz [id^="ui-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById('ui-feedback').classList.remove('hidden');
+            const msg = document.getElementById('feedback-msg');
+            msg.textContent = "Answer Revealed"; msg.className = "text-center py-6 rounded-2xl font-bold text-xl bg-indigo-50 text-indigo-600 border border-indigo-100";
+            document.getElementById('reveal-container').classList.remove('hidden');
+            document.getElementById('answer-val').textContent = current.char;
+            quizState.correct.push(current);
+            saveStats();
+        }
+
+        function showWriteVerification() {
+            stopFlashTimer();
+            const current = quizState.items[quizState.index];
+            document.getElementById('ui-write').classList.add('hidden');
+            document.getElementById('ui-write-verify').classList.remove('hidden');
+            const pCanvas = document.getElementById('preview-canvas-copy');
+            pCanvas.width = 100; pCanvas.height = 100;
+            pCanvas.getContext('2d').drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 100, 100);
+            document.getElementById('write-answer-char').textContent = current.char;
+        }
+
+        function submitManualResult(isCorrect) { document.getElementById('ui-write-verify').classList.add('hidden'); validateAnswer(isCorrect); }
+        function submitType() { const current = quizState.items[quizState.index]; const val = document.getElementById('type-input').value.trim().toLowerCase(); if (val) validateAnswer(val === current.romaji); }
+
+        function nextQuestion() {
+            if(autoNextTimeout) clearTimeout(autoNextTimeout);
+            quizState.index++; 
+            if (quizState.index < quizState.items.length) showQuestion(); else finishQuiz();
+        }
+
+        function finishQuiz() {
+            stopFlashTimer(); 
+            if (quizState.isMastery && quizState.wrong.length === 0) {
+                const bId = `m_${quizState.items[0].sys === 'hira' ? 'h' : 'k'}_${quizState.activeMasteryRow}`;
+                if (!stats.unlockedBadges.includes(bId)) {
+                    stats.unlockedBadges.push(bId);
+                    showToast("🏆 Row Mastery Badge Unlocked!");
+                }
+            }
+            saveStats(); changeView('results');
+            const pct = Math.round((quizState.correct.length / quizState.items.length) * 100);
+            document.getElementById('res-score').textContent = pct + "%";
+            document.getElementById('res-correct').textContent = quizState.correct.length;
+            document.getElementById('res-wrong').textContent = quizState.wrong.length;
+            document.getElementById('btn-retry-wrong').classList.toggle('hidden', quizState.wrong.length === 0);
+        }
+
+        function retryMistakes() { 
+            const wrongSet = quizState.wrong.map(item => ({...item}));
+            if (quizState.isMastery) {
+                 // Restart challenge if mastery failed
+                 startMasteryChallenge(quizState.activeMasteryRow);
+            } else {
+                startQuiz(quizState.type, wrongSet); 
+            }
+        }
+        function retryAll() { 
+            if (quizState.isMastery) startMasteryChallenge(quizState.activeMasteryRow);
+            else startQuiz(quizState.type, JSON.parse(JSON.stringify(lastQuizItems))); 
+        }
+
+        function renderBadges() {
+            const container = document.getElementById('badge-list'); container.innerHTML = '';
+            BADGE_DEFS.forEach(b => {
+                const unlocked = stats.unlockedBadges.includes(b.id);
+                if (currentBadgeTab === 'achieved' && !unlocked) return;
+                if (currentBadgeTab === 'locked' && unlocked) return;
+                
+                const card = document.createElement('div');
+                card.className = `p-4 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between tier-${b.tier} ${!unlocked ? 'badge-locked' : ''}`;
+                
+                let progressText = unlocked ? "✓" : "---";
+                if (b.cat === 'streak') progressText = `${stats.maxStreak}/${b.target}`;
+                else if (b.cat === 'accuracy') progressText = `${stats.totalHira + stats.totalKata}/${b.target}`;
+                else if (b.cat === 'writing') progressText = `${stats.totalWritten}/${b.target}`;
+                else if (b.cat === 'flash') progressText = `${stats.totalFlashStudy}/${b.target}`;
+
+                card.innerHTML = `
+                    <div class="flex-grow">
+                        <div class="flex items-center gap-2 mb-0.5">
+                            <span class="text-[8px] font-black uppercase tracking-widest text-slate-400">${b.tier}</span>
+                            <span class="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-slate-100 rounded text-slate-500">${b.cat}</span>
+                        </div>
+                        <h3 class="font-bold text-sm">${b.name}</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">${b.desc}</p>
+                    </div>
+                    <div class="text-right ml-4">
+                        <div class="text-[10px] font-black text-slate-800">${progressText}</div>
+                        <div class="text-[8px] font-bold text-slate-400 uppercase">${unlocked ? 'Done' : 'Locked'}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function setBadgeTab(t) { 
+            currentBadgeTab = t; 
+            ['all', 'achieved', 'locked'].forEach(tab => {
+                const btn = document.getElementById(`badge-tab-${tab}`);
+                if (btn) {
+                    btn.classList.toggle('btn-active', currentBadgeTab === tab);
+                    btn.classList.toggle('text-slate-500', currentBadgeTab !== tab);
+                }
+            });
+            renderBadges(); 
+        }
+
+        function changeView(view) {
+            document.querySelectorAll('main > div').forEach(d => d.classList.add('hidden'));
+            document.getElementById(`view-${view}`).classList.remove('hidden');
+            document.getElementById('quiz-progress-wrap').classList.add('hidden');
+            currentView = view; updateNavUI();
+            if (view === 'badges') renderBadges();
+            if (view === 'mastery') renderMasteryList();
+        }
+
+        function updateNavUI() {
+            ['study', 'badges', 'mastery'].forEach(v => {
+                const btn = document.getElementById(`nav-${v}`);
+                if(btn) { btn.classList.toggle('text-indigo-600', currentView === v); btn.classList.toggle('bg-indigo-50', currentView === v); }
+            });
+        }
+
+        function updateStreakHeader() { document.getElementById('streak-display').textContent = `🔥 ${stats.currentStreak}`; }
+        function saveStats() { localStorage.setItem('kana_master_v9', JSON.stringify(stats)); }
+        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.opacity = 1; setTimeout(() => t.style.opacity = 0, 2000); }
+
+        function initCanvas() {
+            canvas = document.getElementById('write-canvas'); ctx = canvas.getContext('2d');
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const cx = e.touches ? e.touches[0].clientX : e.clientX;
+                const cy = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: (cx - rect.left) * (canvas.width / rect.width), y: (cy - rect.top) * (canvas.height / rect.height) };
+            };
+            const start = (e) => { isDrawing = true; ctx.beginPath(); const p = getPos(e); ctx.moveTo(p.x, p.y); e.preventDefault(); };
+            const move = (e) => { if (!isDrawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+            const stop = () => { isDrawing = false; ctx.closePath(); };
+            canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', stop);
+            canvas.addEventListener('touchstart', start, {passive: false}); canvas.addEventListener('touchmove', move, {passive: false}); canvas.addEventListener('touchend', stop);
+        }
+
+        function resizeCanvas() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientWidth; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.strokeStyle = '#1e293b'; }
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    </script>
+</body>
+</html>
